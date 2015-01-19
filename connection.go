@@ -4,6 +4,7 @@ package pusher
 import (
 	"code.google.com/p/go.net/websocket"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 )
@@ -67,7 +68,9 @@ func (c *Connection) poll() {
 				return
 			}
 
-			panic(err)
+			log.Println("Pusher recieve error", err)
+			<-time.After(time.Millisecond * 20)
+			continue
 		}
 
 		c.processMessage(&msg)
