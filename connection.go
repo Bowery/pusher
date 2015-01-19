@@ -4,6 +4,7 @@ package pusher
 import (
 	"code.google.com/p/go.net/websocket"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -15,6 +16,9 @@ type Connection struct {
 	key      string
 	conn     *websocket.Conn
 	channels []*Channel
+
+	mu     sync.Mutex
+	closed bool
 }
 
 func New(key string) (*Connection, error) {
@@ -42,15 +46,27 @@ func (c *Connection) pong() {
 	pong := NewPongMessage()
 	for {
 		<-tick
+		if c.isClosed() {
+			return
+		}
+
 		websocket.JSON.Send(c.conn, pong)
 	}
 }
 
 func (c *Connection) poll() {
 	for {
+		if c.isClosed() {
+			return
+		}
+
 		var msg Message
 		err := websocket.JSON.Receive(c.conn, &msg)
 		if err != nil {
+			if c.isClosed() {
+				return
+			}
+
 			panic(err)
 		}
 
@@ -66,8 +82,23 @@ func (c *Connection) processMessage(msg *Message) {
 	}
 }
 
+func (c *Connection) isClosed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.closed
+}
+
 func (c *Connection) Disconnect() error {
-	return c.conn.Close()
+	err := c.conn.Close()
+	if err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	c.closed = true
+	c.mu.Unlock()
+	return nil
 }
 
 func (c *Connection) Channel(name string) *Channel {
